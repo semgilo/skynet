@@ -88,15 +88,26 @@ int sigign() {
 	return 0;
 }
 
-int auth(const char *username, const char *password){
-    if(strcmp(username, "houtai") == 0&&strcmp(password, "HaiNiuGame") == 0)
+int auth(const char *channel, const char *username, const char *password){
+	if(channel == NULL)
 	{
-		return 0;
+		printf("请配置 CHANNEL_NAME");
+		return 1;
 	}
-	char *hostname = "127.0.0.1";
+	if(username == NULL)
+	{
+		printf("请配置 auth_username");
+		return 2;
+	}
+	if(password == NULL)
+	{
+		printf("请输入密码");
+		return 3;
+	}
+	char *hostname = "sauth.goyo.top";
 	char url[100];
-	sprintf(url, "/user/auth/login?username=%s&password=%s", username, password);
-    int post = 8001;
+	sprintf(url, "/auth/login?channel=%s&username=%s&password=%s", channel, username, password);
+    int post = 8888;
     int socket_desc;
     struct sockaddr_in server;
     char message[200];
@@ -110,7 +121,7 @@ int auth(const char *username, const char *password){
     char ip[20] = {0};
     struct hostent *hp;
     if ((hp = gethostbyname(hostname)) == NULL) {
-        return 1;
+        return 4;
     }
     
     strcpy(ip, inet_ntoa(*(struct in_addr *)hp->h_addr_list[0]));
@@ -121,11 +132,11 @@ int auth(const char *username, const char *password){
 
     //Connect to remote server
     if (connect(socket_desc, (struct sockaddr *)&server, sizeof(server)) < 0) {
-        printf("设备ip未经许可无法启动： ip:%s post:%d \n", hostname, post);
-        return 2;
+        // printf("设备ip未经许可无法启动： ip:%s post:%d \n", hostname, post);
+        return 5;
     }
 
-    puts("Connected\n");
+    // puts("Connected\n");
 
     //Send some data
     //http 协议
@@ -133,10 +144,10 @@ int auth(const char *username, const char *password){
     
     //向服务器发送数据
     if (send(socket_desc, message, strlen(message) , 0) < 0) {
-        puts("Send failed");
-        return 3;
+        // puts("Send failed");
+        return 6;
     }
-    puts("Data Send\n");
+    // puts("Data Send\n");
 
     struct timeval timeout = {3, 0};
     setsockopt(socket_desc, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(struct timeval));
@@ -145,7 +156,7 @@ int auth(const char *username, const char *password){
     //loop
     int size_recv, total_size = 0;
     char chunk[512];
-    int ret = 4;
+    int ret = 7;
     while(1) {
         memset(chunk , 0 , 512); //clear the variable
         //获取数据
@@ -164,23 +175,23 @@ int auth(const char *username, const char *password){
                 exit(1);
             }
         } else if (size_recv == 0) {
-            printf("peer closed ...\n");
+            // printf("peer closed ...\n");
             break;
         } else {
             total_size += size_recv;
-            printf("\n\n-------\n\n");
-            printf("%s\n" , chunk);
+            // printf("\n\n-------\n\n");
+            // printf("%s\n" , chunk);
             char *t = strstr(chunk, "\"msg\":\"success\"");
             if(t != NULL)
             {
                 ret = 0;
             }
-            printf("str str %s\n", t);
-            printf("\n\n-------\n\n");
+            // printf("str str %s\n", t);
+            // printf("\n\n-------\n\n");
         }
     }
 
-    printf("Reply received, total_size = %d bytes ret = %d\n", total_size, ret);
+    // printf("Reply received, total_size = %d bytes ret = %d\n", total_size, ret);
     return ret;
 }
 
@@ -226,24 +237,7 @@ main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	if(argv[2] == NULL)
-	{
-		printf("请输入 账号\n");
-		return 1;
-	}
-
-	if(argv[3] == NULL)
-	{
-		printf("请输入密码\n");
-		return 1;
-	}
-
-	int ret = auth(argv[2], argv[3]);
-	if(ret > 0)
-	{
-		printf(" server error %d\n", ret);
-		return 1;
-	}
+	
 
 	skynet_globalinit();
 	skynet_env_init();
@@ -281,6 +275,20 @@ main(int argc, char *argv[]) {
 	config.logservice = optstring("logservice", "logger");
 	config.profile = optboolean("profile", 1);
 
+	char * channel = optstring("CHANNEL_NAME", "null");
+	char * username = optstring("auth_username", "null");
+	char * password = argv[2];
+	if(password == NULL)
+	{
+		password = 	optstring("auth_password", "null");
+	}
+	int ret = auth(channel, username, password);
+	if(ret > 0)
+	{
+		printf("---- 启动失败 %d ----\n", ret);
+		return 1;
+	}
+	printf("---- 启动成功 ----\n");
 	lua_close(L);
 
 	skynet_start(&config);
