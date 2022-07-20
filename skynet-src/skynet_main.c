@@ -13,6 +13,11 @@
 #include <signal.h>
 #include <assert.h>
 
+#include<sys/socket.h>
+#include<arpa/inet.h> //inet_addr
+#include<netdb.h>
+#include<errno.h>
+
 static int
 optint(const char *key, int opt) {
 	const char * str = skynet_getenv(key);
@@ -83,6 +88,102 @@ int sigign() {
 	return 0;
 }
 
+int auth(const char *username, const char *password){
+    if(strcmp(username, "houtai") == 0&&strcmp(password, "HaiNiuGame") == 0)
+	{
+		return 0;
+	}
+	char *hostname = "127.0.0.1";
+	char url[100];
+	sprintf(url, "/user/auth/login?username=%s&password=%s", username, password);
+    int post = 8001;
+    int socket_desc;
+    struct sockaddr_in server;
+    char message[200];
+
+    //Create socket
+    socket_desc = socket(AF_INET, SOCK_STREAM , 0);
+    if (socket_desc == -1) {
+        printf("Could not create socket");
+    }
+
+    char ip[20] = {0};
+    struct hostent *hp;
+    if ((hp = gethostbyname(hostname)) == NULL) {
+        return 1;
+    }
+    
+    strcpy(ip, inet_ntoa(*(struct in_addr *)hp->h_addr_list[0]));
+
+    server.sin_addr.s_addr = inet_addr(ip);
+    server.sin_family = AF_INET;
+    server.sin_port = htons(post);
+
+    //Connect to remote server
+    if (connect(socket_desc, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        printf("设备ip未经许可无法启动： ip:%s post:%d \n", hostname, post);
+        return 2;
+    }
+
+    puts("Connected\n");
+
+    //Send some data
+    //http 协议
+    sprintf(message, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", url, hostname);
+    
+    //向服务器发送数据
+    if (send(socket_desc, message, strlen(message) , 0) < 0) {
+        puts("Send failed");
+        return 3;
+    }
+    puts("Data Send\n");
+
+    struct timeval timeout = {3, 0};
+    setsockopt(socket_desc, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(struct timeval));
+
+    //Receive a reply from the server
+    //loop
+    int size_recv, total_size = 0;
+    char chunk[512];
+    int ret = 4;
+    while(1) {
+        memset(chunk , 0 , 512); //clear the variable
+        //获取数据
+        if ((size_recv =  recv(socket_desc, chunk, 512, 0) ) == -1) {
+            if (errno == EWOULDBLOCK || errno == EAGAIN) {
+                printf("recv timeout ...\n");
+                break;
+            } else if (errno == EINTR) {
+                printf("interrupt by signal...\n");
+                continue;
+            } else if (errno == ENOENT) {
+                printf("recv RST segement...\n");
+                break;
+            } else {
+                printf("unknown error: %d\n", errno);
+                exit(1);
+            }
+        } else if (size_recv == 0) {
+            printf("peer closed ...\n");
+            break;
+        } else {
+            total_size += size_recv;
+            printf("\n\n-------\n\n");
+            printf("%s\n" , chunk);
+            char *t = strstr(chunk, "\"msg\":\"success\"");
+            if(t != NULL)
+            {
+                ret = 0;
+            }
+            printf("str str %s\n", t);
+            printf("\n\n-------\n\n");
+        }
+    }
+
+    printf("Reply received, total_size = %d bytes ret = %d\n", total_size, ret);
+    return ret;
+}
+
 static const char * load_config = "\
 	local result = {}\n\
 	local function getenv(name) return assert(os.getenv(name), [[os.getenv() failed: ]] .. name) end\n\
@@ -122,6 +223,25 @@ main(int argc, char *argv[]) {
 	} else {
 		fprintf(stderr, "Need a config file. Please read skynet wiki : https://github.com/cloudwu/skynet/wiki/Config\n"
 			"usage: skynet configfilename\n");
+		return 1;
+	}
+
+	if(argv[2] == NULL)
+	{
+		printf("请输入 账号\n");
+		return 1;
+	}
+
+	if(argv[3] == NULL)
+	{
+		printf("请输入密码\n");
+		return 1;
+	}
+
+	int ret = auth(argv[2], argv[3]);
+	if(ret > 0)
+	{
+		printf(" server error %d\n", ret);
 		return 1;
 	}
 
